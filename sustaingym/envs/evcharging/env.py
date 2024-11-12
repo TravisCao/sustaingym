@@ -152,8 +152,8 @@ class EVChargingEnv(Env):
             'timestep': self._timestep_obs,
             'est_departures': self._est_departures,
             'demands': self._demands,
-            'prev_moer': self._prev_moer,
-            'forecasted_moer': self._forecasted_moer,
+            # 'prev_moer': self._prev_moer,
+            # 'forecasted_moer': self._forecasted_moer,
         }
 
         # Track cumulative components of reward signal
@@ -388,8 +388,8 @@ class EVChargingEnv(Env):
             self._est_departures[station_idx] = session_info.estimated_departure - self.t
             self._demands[station_idx] = session_info.remaining_demand  # kWh
 
-        self._prev_moer[0] = self.moer[self.t, 0]
-        self._forecasted_moer[:] = self.moer[self.t, 1:self.moer_forecast_steps + 1]  # forecasts start from 2nd column
+        # self._prev_moer[0] = self.moer[self.t, 0]
+        # self._forecasted_moer[:] = self.moer[self.t, 1:self.moer_forecast_steps + 1]  # forecasts start from 2nd column
         self._timestep_obs[0] = self.t / self.max_timestep
 
         return self._obs
@@ -455,7 +455,8 @@ class EVChargingEnv(Env):
         # Carbon cost (Amp * period * kg CO2 / kWh) -> ($)
         carbon_cost = self.CARBON_COST_FACTOR * total_charging_rate * self.moer[self.t, 0]
 
-        total_reward = profit - carbon_cost - excess_charge
+        # total_reward = profit - carbon_cost - excess_charge
+        total_reward = profit
 
         # Update reward information-tracking
         self._reward_breakdown['profit'] += profit
