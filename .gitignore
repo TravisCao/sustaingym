@@ -12,6 +12,8 @@ examples/plots
 examples/building/plot
 ## END CUSTOM EXCLUSIONS
 
+uv.lock
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
