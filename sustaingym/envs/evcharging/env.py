@@ -1,6 +1,7 @@
 """
 The module implements the EVChargingEnv class.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -95,6 +96,7 @@ class EVChargingEnv(Env):
         num_stations: int, number of stations in EV charging network
         timestep: int, current timestep in episode, from 0 to 288
     """
+
     TIMESTEP_DURATION = 5  # in minutes
     ACTION_SCALE_FACTOR = 32  # Max charging rate in A for garage EVSEs
 
@@ -110,12 +112,17 @@ class EVChargingEnv(Env):
     A_PERS_TO_KWH = A_MINS_TO_KWH * TIMESTEP_DURATION  # (kWh / A * periods)
     PROFIT_FACTOR = A_PERS_TO_KWH * MARGINAL_PROFIT_PER_KWH  # $ / (A * period)
     VIOLATION_FACTOR = A_PERS_TO_KWH * VIOLATION_WEIGHT  # $ / (A * period)
-    CARBON_COST_FACTOR = A_PERS_TO_KWH * (CO2_COST_PER_METRIC_TON / 1000)  # ($ * kV * hr) / (kg CO2 * period)
+    CARBON_COST_FACTOR = A_PERS_TO_KWH * (
+        CO2_COST_PER_METRIC_TON / 1000
+    )  # ($ * kV * hr) / (kg CO2 * period)
 
-    def __init__(self, data_generator: AbstractTraceGenerator,
-                 moer_forecast_steps: int = 36,
-                 project_action_in_env: bool = True,
-                 verbose: int = 0):
+    def __init__(
+        self,
+        data_generator: AbstractTraceGenerator,
+        moer_forecast_steps: int = 36,
+        project_action_in_env: bool = True,
+        verbose: int = 0,
+    ):
         assert 1 <= moer_forecast_steps <= 36
 
         # Set arguments
@@ -125,7 +132,7 @@ class EVChargingEnv(Env):
         self.project_action_in_env = project_action_in_env
         self.verbose = verbose
         if self.verbose < 2:
-            warnings.filterwarnings('ignore')
+            warnings.filterwarnings("ignore")
 
         # Set up infrastructure info with fake parameters
         self.cn = site_str_to_site(self.data_generator.site)
@@ -137,30 +144,42 @@ class EVChargingEnv(Env):
         self._demands = np.zeros(self.num_stations, dtype=np.float32)
         self._prev_moer = np.zeros(1, dtype=np.float32)
         self._forecasted_moer = np.zeros(self.moer_forecast_steps, dtype=np.float32)
-        self._timestep_obs = np.zeros(1, dtype=np.float32)  # timestep normalized to [0, 1]
+        self._timestep_obs = np.zeros(
+            1, dtype=np.float32
+        )  # timestep normalized to [0, 1]
 
-        self.observation_space = spaces.Dict({
-            'timestep':        spaces.Box(0, 1, shape=(1,), dtype=np.float32),
-            'est_departures':  spaces.Box(-288, 288, shape=(self.num_stations,), dtype=np.float32),
-            'demands':         spaces.Box(0, self.data_generator.requested_energy_cap,
-                                          shape=(self.num_stations,), dtype=np.float32),
-            'prev_moer':       spaces.Box(0, 1, shape=(1,), dtype=np.float32),
-            'forecasted_moer': spaces.Box(0, 1, shape=(self.moer_forecast_steps,), dtype=np.float32),
-        })
+        self.observation_space = spaces.Dict(
+            {
+                "timestep": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
+                "est_departures": spaces.Box(
+                    -288, 288, shape=(self.num_stations,), dtype=np.float32
+                ),
+                "demands": spaces.Box(
+                    0,
+                    self.data_generator.requested_energy_cap,
+                    shape=(self.num_stations,),
+                    dtype=np.float32,
+                ),
+                # "prev_moer": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
+                # "forecasted_moer": spaces.Box(
+                #     0, 1, shape=(self.moer_forecast_steps,), dtype=np.float32
+                # ),
+            }
+        )
 
         self._obs = {
-            'timestep': self._timestep_obs,
-            'est_departures': self._est_departures,
-            'demands': self._demands,
-            'prev_moer': self._prev_moer,
-            'forecasted_moer': self._forecasted_moer,
+            "timestep": self._timestep_obs,
+            "est_departures": self._est_departures,
+            "demands": self._demands,
+            # 'prev_moer': self._prev_moer,
+            # 'forecasted_moer': self._forecasted_moer,
         }
 
         # Track cumulative components of reward signal
         self._reward_breakdown = {
-            'profit': 0.0,
-            'carbon_cost': 0.0,
-            'excess_charge': 0.0,
+            "profit": 0.0,
+            "carbon_cost": 0.0,
+            "excess_charge": 0.0,
         }
 
         # Initialize variables for gym resetting
@@ -169,7 +188,8 @@ class EVChargingEnv(Env):
 
         # Define action space for the pilot signals
         self.action_space = spaces.Box(
-            low=0, high=1.0, shape=(self.num_stations,), dtype=np.float32)
+            low=0, high=1.0, shape=(self.num_stations,), dtype=np.float32
+        )
 
         # Define reward range
         self.reward_range = (-np.inf, self.PROFIT_FACTOR * 32 * self.num_stations)
@@ -189,12 +209,15 @@ class EVChargingEnv(Env):
 
         # Action cannot exceed maximum pilot signal or total demand of vehicle
         max_action = cp.minimum(
-            1., self._demands_cvx / self.A_PERS_TO_KWH / self.ACTION_SCALE_FACTOR)
+            1.0, self._demands_cvx / self.A_PERS_TO_KWH / self.ACTION_SCALE_FACTOR
+        )
 
-        objective = cp.Minimize(cp.norm(self._projected_action - self._agent_action, p=2))
+        objective = cp.Minimize(
+            cp.norm(self._projected_action - self._agent_action, p=2)
+        )
         constraints = [
             self._projected_action <= max_action,
-            magnitude_constraint(self._projected_action, self.cn)
+            magnitude_constraint(self._projected_action, self.cn),
         ]
         self.prob = cp.Problem(objective, constraints)
 
@@ -225,12 +248,15 @@ class EVChargingEnv(Env):
 
     def __repr__(self) -> str:
         """Returns the string representation of charging gym."""
-        return (f'EVChargingGym (action projection = {self.project_action_in_env}, '
-                f'moer forecast steps = {self.moer_forecast_steps}) '
-                f'using {self.data_generator.__repr__()}')
+        return (
+            f"EVChargingGym (action projection = {self.project_action_in_env}, "
+            f"moer forecast steps = {self.moer_forecast_steps}) "
+            f"using {self.data_generator.__repr__()}"
+        )
 
-    def step(self, action: np.ndarray
-             ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
         """Steps the environment.
 
         Calls the step function of the internal simulator.
@@ -282,7 +308,9 @@ class EVChargingEnv(Env):
 
         # Step internal simulator
         schedule = self._to_schedule(action)  # transform action to pilot signals
-        done = self._simulator.step(schedule)  # NOTE: call reset() for NoneType AttributeError
+        done = self._simulator.step(
+            schedule
+        )  # NOTE: call reset() for NoneType AttributeError
         self._simulator._resolve = False  # work-around to keep iterating
 
         # Retrieve environment information
@@ -292,8 +320,9 @@ class EVChargingEnv(Env):
 
         return observation, reward, done, False, info
 
-    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None
-              ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
         """Resets the environment.
 
         Prepares for the next episode by re-creating the charging network,
@@ -314,8 +343,8 @@ class EVChargingEnv(Env):
         super().reset(seed=seed)
         self.data_generator.set_seed(seed)
 
-        if options is not None and 'verbose' in options:
-            self.verbose = options['verbose']
+        if options is not None and "verbose" in options:
+            self.verbose = options["verbose"]
 
         # Initialize network, events, MOER data, simulator, interface, and timestep
         self.cn = site_str_to_site(self.data_generator.site)
@@ -323,9 +352,13 @@ class EVChargingEnv(Env):
         self._max_profit = self._calculate_max_profit()
         self.moer = self.data_generator.get_moer()
         self._simulator = acns.Simulator(
-            network=self.cn, scheduler=None, events=events,
+            network=self.cn,
+            scheduler=None,
+            events=events,
             start=self.data_generator.day,
-            period=self.data_generator.TIME_STEP_DURATION, verbose=False)
+            period=self.data_generator.TIME_STEP_DURATION,
+            verbose=False,
+        )
         self._interface = acns.Interface(self._simulator)
         self.t = 0
 
@@ -334,7 +367,7 @@ class EVChargingEnv(Env):
             self._reward_breakdown[reward_component] = 0.0
 
         if self.verbose >= 1:
-            print(f'Simulating {num_plugs} events using {self.data_generator}')
+            print(f"Simulating {num_plugs} events using {self.data_generator}")
 
         return self._get_observation(), self._get_info()
 
@@ -373,10 +406,14 @@ class EVChargingEnv(Env):
             # the other type accepts {0} U {6, 7, 8, ..., 32}
             if self.cn.min_pilot_signals[i] == 6:
                 # signals less than min pilot signal are set to zero, rest are in action space
-                pilot_signals[station_id] = [np.round(action[i]) if action[i] >= 6 else 0]
+                pilot_signals[station_id] = [
+                    np.round(action[i]) if action[i] >= 6 else 0
+                ]
             else:
                 # set to {0, 8, 16, 24, 32}
-                pilot_signals[station_id] = [np.round(action[i] / 8) * 8]  # TODO: smarter rounding?
+                pilot_signals[station_id] = [
+                    np.round(action[i] / 8) * 8
+                ]  # TODO: smarter rounding?
         return pilot_signals
 
     def _get_observation(self) -> dict[str, np.ndarray]:
@@ -385,11 +422,13 @@ class EVChargingEnv(Env):
         self._demands.fill(0)
         for session_info in self._interface.active_sessions():
             station_idx = self._evse_name_to_idx[session_info.station_id]
-            self._est_departures[station_idx] = session_info.estimated_departure - self.t
+            self._est_departures[station_idx] = (
+                session_info.estimated_departure - self.t
+            )
             self._demands[station_idx] = session_info.remaining_demand  # kWh
 
-        self._prev_moer[0] = self.moer[self.t, 0]
-        self._forecasted_moer[:] = self.moer[self.t, 1:self.moer_forecast_steps + 1]  # forecasts start from 2nd column
+        # self._prev_moer[0] = self.moer[self.t, 0]
+        # self._forecasted_moer[:] = self.moer[self.t, 1:self.moer_forecast_steps + 1]  # forecasts start from 2nd column
         self._timestep_obs[0] = self.t / self.max_timestep
 
         return self._obs
@@ -402,18 +441,20 @@ class EVChargingEnv(Env):
                 'max_profit' and 'reward_breakdown' are returned.
         """
         info = {
-            'max_profit': self._max_profit,
-            'reward_breakdown': self._reward_breakdown
+            "max_profit": self._max_profit,
+            "reward_breakdown": self._reward_breakdown,
         }
         if all:
-            info.update({
-                'num_evs': len(self._evs),
-                'avg_plugin_time': self._calculate_avg_plugin_time(),
-                'evs': self._evs,
-                'active_evs': self._simulator.get_active_evs(),
-                'moer': self.moer,
-                'pilot_signals': self._simulator.pilot_signals_as_df()
-            })
+            info.update(
+                {
+                    "num_evs": len(self._evs),
+                    "avg_plugin_time": self._calculate_avg_plugin_time(),
+                    "evs": self._evs,
+                    "active_evs": self._simulator.get_active_evs(),
+                    # "moer": self.moer,
+                    "pilot_signals": self._simulator.pilot_signals_as_df(),
+                }
+            )
         return info
 
     def _calculate_avg_plugin_time(self) -> float:
@@ -424,7 +465,9 @@ class EVChargingEnv(Env):
         """Calculate max profits without regards to network constraints."""
         requested_energy = np.array([ev.requested_energy for ev in self._evs])
         duration_in_periods = np.array([ev.departure - ev.arrival for ev in self._evs])
-        max_kwh_in_duration = duration_in_periods * self.ACTION_SCALE_FACTOR * self.A_PERS_TO_KWH
+        max_kwh_in_duration = (
+            duration_in_periods * self.ACTION_SCALE_FACTOR * self.A_PERS_TO_KWH
+        )
         max_kwh_to_provide = np.minimum(requested_energy, max_kwh_in_duration)
         max_profit = np.sum(max_kwh_to_provide * self.MARGINAL_PROFIT_PER_KWH)
         return max_profit
@@ -443,24 +486,31 @@ class EVChargingEnv(Env):
             total_reward: weighted reward awarded to the current timestep
         """
         # profit calculation (Amp * period) -> ($)
-        total_charging_rate = np.sum(self._simulator.charging_rates[:, self.t-1])  # in (A)
+        total_charging_rate = np.sum(
+            self._simulator.charging_rates[:, self.t - 1]
+        )  # in (A)
         profit = self.PROFIT_FACTOR * total_charging_rate
 
         # Network constraints - amount of charge over maximum allowed rates ($)
         schedule = np.array([x[0] for x in schedule.values()])  # convert to numpy
         current_sum = np.abs(self._simulator.network.constraint_current(schedule))
-        excess_current = np.sum(np.maximum(0, current_sum - self._simulator.network.magnitudes))
+        excess_current = np.sum(
+            np.maximum(0, current_sum - self._simulator.network.magnitudes)
+        )
         excess_charge = excess_current * self.VIOLATION_FACTOR
 
         # Carbon cost (Amp * period * kg CO2 / kWh) -> ($)
-        carbon_cost = self.CARBON_COST_FACTOR * total_charging_rate * self.moer[self.t, 0]
+        carbon_cost = (
+            self.CARBON_COST_FACTOR * total_charging_rate * self.moer[self.t, 0]
+        )
 
-        total_reward = profit - carbon_cost - excess_charge
+        # total_reward = profit - carbon_cost - excess_charge
+        total_reward = profit
 
         # Update reward information-tracking
-        self._reward_breakdown['profit'] += profit
-        self._reward_breakdown['carbon_cost'] += carbon_cost
-        self._reward_breakdown['excess_charge'] += excess_charge
+        self._reward_breakdown["profit"] += profit
+        self._reward_breakdown["carbon_cost"] += carbon_cost
+        self._reward_breakdown["excess_charge"] += excess_charge
 
         return total_reward
 
@@ -468,9 +518,53 @@ class EVChargingEnv(Env):
         """Close the environment. Delete internal variables."""
         del self._simulator, self.cn
 
+    def reset_state(self):
+        """Returns a random in-distribution state.
 
-def magnitude_constraint(action: cp.Variable, cn: acns.ChargingNetwork
-                         ) -> cp.Constraint:
+        This function samples a random state that could occur during normal environment
+        operation. It uses the data generator to sample realistic EV charging events
+        and MOER forecasts.
+
+        Returns:
+            observation: A random valid state from the environment's observation space
+            info: Empty dict
+        """
+        # Reset internal state arrays
+        self._est_departures.fill(0)
+        self._demands.fill(0)
+        self._prev_moer.fill(0)
+        self._forecasted_moer.fill(0)
+        self._timestep_obs.fill(0)
+
+        # Sample random timestep
+        self._timestep_obs[0] = np.random.random()
+
+        # Get random events from data generator for this timestep
+        events = self.data_generator.sample_events()
+
+        # Update demands and estimated departures based on events
+        for _, event in events.iterrows():
+            station_idx = self._evse_name_to_idx.get(event["station_id"])
+            if station_idx is not None:
+                self._demands[station_idx] = min(
+                    event["requested_energy (kWh)"],
+                    self.data_generator.requested_energy_cap,
+                )
+                # Convert departure time to number of periods until departure
+                departure_periods = event["departure"] - event["arrival"]
+                self._est_departures[station_idx] = departure_periods
+
+        # Sample random MOER values
+        # moer_data = self.data_generator.sample_moer()
+        # self._prev_moer[0] = moer_data[0]
+        # self._forecasted_moer[:] = moer_data[1 : self.moer_forecast_steps + 1]
+
+        return self._obs.copy(), {}
+
+
+def magnitude_constraint(
+    action: cp.Variable, cn: acns.ChargingNetwork
+) -> cp.Constraint:
     """Creates constraint requiring that aggregate magnitude (A) must be less
     than observation magnitude (A).
 
@@ -482,7 +576,9 @@ def magnitude_constraint(action: cp.Variable, cn: acns.ChargingNetwork
         constr: constraint on aggregate magnitude
     """
     phase_factor = np.exp(1j * np.deg2rad(cn._phase_angles))  # shape [num_stations]
-    A_tilde = cn.constraint_matrix * phase_factor[None, :]  # shape [num_constraints, num_stations]
+    A_tilde = (
+        cn.constraint_matrix * phase_factor[None, :]
+    )  # shape [num_constraints, num_stations]
 
     # convert to A
     agg_magnitude = cp.abs(A_tilde @ action) * EVChargingEnv.ACTION_SCALE_FACTOR
@@ -495,5 +591,6 @@ def magnitude_constraint(action: cp.Variable, cn: acns.ChargingNetwork
         return agg_magnitude <= cn.magnitudes[:, None]
     else:
         raise ValueError(
-            'Action should have shape [num_stations] or [num_stations, T], '
-            f'but received shape {action.shape} instead.')
+            "Action should have shape [num_stations] or [num_stations, T], "
+            f"but received shape {action.shape} instead."
+        )
