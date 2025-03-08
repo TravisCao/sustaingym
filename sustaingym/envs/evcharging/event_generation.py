@@ -327,6 +327,58 @@ class RealTraceGenerator(AbstractTraceGenerator):
         df = df[df['estimated_departure'] > df['arrival']]
         return df.copy()
 
+    # 这个方法是用来给reset_state用的，为了decision pretrained Transformer 生成query state
+    def sample_events(self):
+        """Sample a random set of events for a random timestep.
+
+        This method samples events from the events DataFrame for a random timestep,
+        without changing the current day of the generator.
+
+        Returns:
+            events: DataFrame of sampled sessions.
+        """
+        # Store the current day
+        current_day = self.day
+        
+        # Sample a random day temporarily
+        self._update_day()
+        
+        # Get events for the random day
+        events = self._create_events()
+        
+        # Restore the original day
+        self.day = current_day
+        
+        return events
+
+    def sample_moer(self):
+        """Sample MOER data for a random timestep.
+
+        This method samples MOER data for a random day without changing
+        the current day of the generator.
+
+        Returns:
+            data: array of shape (37,). The first value is the historical
+                MOER. The remaining values are forecasts for the next 36
+                five-min time steps. Units kg CO2 per kWh.
+        """
+        # Store current day
+        current_day = self.day
+        
+        # Sample a random day
+        self._update_day()
+        
+        # Get MOER data for the random day
+        moer_data = self.get_moer()
+        
+        # Sample a random timestep
+        timestep = self.rng.integers(0, self.MAX_STEPS_OF_TRACE)
+        moer_sample = moer_data[timestep]
+        
+        # Restore the original day
+        self.day = current_day
+        
+        return moer_sample
 
 class GMMsTraceGenerator(AbstractTraceGenerator):
     """Class for ``EventQueue`` generator by sampling from trained GMMs.
