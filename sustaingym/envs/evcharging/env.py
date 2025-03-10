@@ -160,10 +160,10 @@ class EVChargingEnv(Env):
                     shape=(self.num_stations,),
                     dtype=np.float32,
                 ),
-                # "prev_moer": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
-                # "forecasted_moer": spaces.Box(
-                #     0, 1, shape=(self.moer_forecast_steps,), dtype=np.float32
-                # ),
+                "prev_moer": spaces.Box(0, 1, shape=(1,), dtype=np.float32),
+                "forecasted_moer": spaces.Box(
+                    0, 1, shape=(self.moer_forecast_steps,), dtype=np.float32
+                ),
             }
         )
 
@@ -171,8 +171,8 @@ class EVChargingEnv(Env):
             "timestep": self._timestep_obs,
             "est_departures": self._est_departures,
             "demands": self._demands,
-            # 'prev_moer': self._prev_moer,
-            # 'forecasted_moer': self._forecasted_moer,
+            'prev_moer': self._prev_moer,
+            'forecasted_moer': self._forecasted_moer,
         }
 
         # Track cumulative components of reward signal
@@ -348,7 +348,7 @@ class EVChargingEnv(Env):
 
         # Initialize network, events, MOER data, simulator, interface, and timestep
         self.cn = site_str_to_site(self.data_generator.site)
-        events, self._evs, num_plugs = self.data_generator.get_event_queue()
+        events, self.evs, num_plugs = self.data_generator.get_event_queue()
         self._max_profit = self._calculate_max_profit()
         self.moer = self.data_generator.get_moer()
         self._simulator = acns.Simulator(
@@ -447,9 +447,9 @@ class EVChargingEnv(Env):
         if all:
             info.update(
                 {
-                    "num_evs": len(self._evs),
+                    "num_evs": len(self.evs),
                     "avg_plugin_time": self._calculate_avg_plugin_time(),
-                    "evs": self._evs,
+                    "evs": self.evs,
                     "active_evs": self._simulator.get_active_evs(),
                     # "moer": self.moer,
                     "pilot_signals": self._simulator.pilot_signals_as_df(),
@@ -459,12 +459,12 @@ class EVChargingEnv(Env):
 
     def _calculate_avg_plugin_time(self) -> float:
         """Calculate average plug-in times for evs in periods."""
-        return np.mean([ev.departure - ev.arrival for ev in self._evs])
+        return np.mean([ev.departure - ev.arrival for ev in self.evs])
 
     def _calculate_max_profit(self) -> float:
         """Calculate max profits without regards to network constraints."""
-        requested_energy = np.array([ev.requested_energy for ev in self._evs])
-        duration_in_periods = np.array([ev.departure - ev.arrival for ev in self._evs])
+        requested_energy = np.array([ev.requested_energy for ev in self.evs])
+        duration_in_periods = np.array([ev.departure - ev.arrival for ev in self.evs])
         max_kwh_in_duration = (
             duration_in_periods * self.ACTION_SCALE_FACTOR * self.A_PERS_TO_KWH
         )
@@ -504,8 +504,8 @@ class EVChargingEnv(Env):
             self.CARBON_COST_FACTOR * total_charging_rate * self.moer[self.t, 0]
         )
 
-        # total_reward = profit - carbon_cost - excess_charge
-        total_reward = profit
+        total_reward = profit - carbon_cost - excess_charge
+        # total_reward = profit
 
         # Update reward information-tracking
         self._reward_breakdown["profit"] += profit

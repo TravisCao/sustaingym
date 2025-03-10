@@ -127,6 +127,15 @@ class MPC(BaseAlgorithm):
         return self.traj.value[:, 0]  # take first action
 
 
+# FIXME: offline optimal has some bugs
+# index 1546 is out of bounds for axis 1 with size 288
+# 1546
+# index 1547 is out of bounds for axis 1 with size 288
+# 1547
+# index 1548 is out of bounds for axis 1 with size 288
+# 1548
+# index 1549 is out of bounds for axis 1 with size 288
+# 1549
 class OfflineOptimal(BaseAlgorithm):
     """Calculates best performance of a controller that knows the future.
 
@@ -189,7 +198,7 @@ class OfflineOptimal(BaseAlgorithm):
             station_idx = {evse: i for i, evse in enumerate(env.cn.station_ids)}
 
             mask = np.zeros((env.num_stations, self.TOTAL_TIMESTEPS))
-            for ev in env._evs:
+            for ev in env.evs:
                 ev_idx = station_idx[ev.station_id]
                 # Set mask using true arrival and departures
                 mask[ev_idx, ev.arrival:ev.departure] = MAX_ACTION
